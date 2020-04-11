@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const rename = require("gulp-rename");
 const transform = require("gulp-transform");
-const buildContent = require("./src/content");
+const {buildContent, getTagMetadata} = require("./src/content");
 const Viz = require('viz.js');
 const vizRenderOpts = require('viz.js/full.render.js');
 
@@ -44,12 +44,43 @@ function vendorAssets() {
     .pipe(gulp.dest(paths.distAssets));
 }
 
+//special diagram built from invader tag definitions
+async function tagsDiagram() {
+  const normalize = (s) => s.toLowerCase().replace(/[^a-z]/g, "");
+  const structs = Object.values(await getTagMetadata(paths.invaderTagDefsBase));
+  const edges = structs.flatMap(struct => {
+    const structEdges = [];
+    if (struct.fields) {
+      struct.fields.forEach(field => {
+        if (field.type == "TagReflexive") {
+          structEdges.push(`${normalize(struct.name)} -> ${normalize(field.struct)};`);
+        } else if (field.type == "TagDependency") {
+          field.classes.forEach(clazz => {
+            if (clazz != "*") {
+              structEdges.push(`${normalize(struct.name)} -> ${normalize(clazz)};`);
+            }
+          });
+        }
+      });
+    }
+    if (struct.inherits) {
+      structEdges.push(`${normalize(struct.name)} -> ${normalize(struct.inherits)} [label="Inherits"];`);
+    }
+    return structEdges;
+  }).join("\n");
+  const graphvizSrc = `digraph {\n${edges}\n}`;
+  const viz = new Viz(vizRenderOpts);
+  const svg = await viz.renderString(graphvizSrc);
+  fs.mkdirSync("./dist/blam/tags/", {recursive: true});
+  fs.writeFileSync(path.join("./dist/blam/tags/", "tags.svg"), svg, "utf8");
+}
+
 //build content graphviz diagrams into SVG (https://graphviz.org)
 function contentDiagrams() {
   return gulp.src(paths.srcDiagrams)
-    .pipe(transform("utf8", (mermaidSrc) => {
+    .pipe(transform("utf8", (graphvizSrc) => {
       const viz = new Viz(vizRenderOpts);
-      return viz.renderString(mermaidSrc);
+      return viz.renderString(graphvizSrc);
     }))
     .pipe(rename({extname: ".svg"}))
     .pipe(gulp.dest(paths.dist));
@@ -87,5 +118,6 @@ module.exports = {
   assets, //build just styles
   content, //build just page content
   dev, //local development mode
+  tagsDiagram,
   default: buildAll //typical build for publishing content
 };

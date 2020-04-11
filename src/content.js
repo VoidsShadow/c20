@@ -93,4 +93,4 @@ async function buildContent(contentDir, outputDir, tagsDir) {
   await renderContent(metaIndex, outputDir);
 }
 
-module.exports = buildContent;
+module.exports = {buildContent, getTagMetadata};

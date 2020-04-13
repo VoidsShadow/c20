@@ -46,29 +46,48 @@ function vendorAssets() {
 
 //special diagram built from invader tag definitions
 async function tagsDiagram() {
-  const normalize = (s) => s.toLowerCase().replace(/[^a-z]/g, "");
-  const structs = Object.values(await getTagMetadata(paths.invaderTagDefsBase));
-  const edges = structs.flatMap(struct => {
-    const structEdges = [];
+  const structs = await getTagMetadata(paths.invaderTagDefsBase);
+  const edges = new Set();
+  const subgraphs = {};
+  Object.values(structs).forEach(struct => {
     if (struct.fields) {
       struct.fields.forEach(field => {
-        if (field.type == "TagReflexive") {
-          structEdges.push(`${normalize(struct.name)} -> ${normalize(field.struct)};`);
-        } else if (field.type == "TagDependency") {
+        if (field.type == "TagDependency") {
           field.classes.forEach(clazz => {
-            if (clazz != "*") {
-              structEdges.push(`${normalize(struct.name)} -> ${normalize(clazz)};`);
+            if (clazz == "*") {
+              edges.add(`${struct.tagNameSnake} -> "(any)";`);
+            } else {
+              edges.add(`${struct.tagNameSnake} -> ${clazz};`);
             }
           });
         }
       });
     }
     if (struct.inherits) {
-      structEdges.push(`${normalize(struct.name)} -> ${normalize(struct.inherits)} [label="Inherits"];`);
+      const destName = structs[struct.inherits].tagNameSnake;
+      if (struct.tagNameSnake != destName) {
+        subgraphs[destName] = subgraphs[destName] || new Set();
+        subgraphs[destName].add(struct.tagNameSnake);
+        edges.add(`${struct.tagNameSnake} -> ${destName} [label="Inherits"];`);
+      }
     }
-    return structEdges;
-  }).join("\n");
-  const graphvizSrc = `digraph {\n${edges}\n}`;
+  });
+  const graphvizSrc = `digraph {
+    node [style=filled,color="#8686cc"];
+    {rank=same globals scenario tag_collection};
+    {rank=sink bitmap sound};
+    #{rank=same object}
+    #{rank=same device item projectile scenery unit}
+    #{rank=same device_control device_light_fixture device_machine equipment weapon vehicle biped}
+    ${Object.entries(subgraphs).map(([k, v]) => `subgraph cluster_${k} {
+      style=filled;
+      color=lightgrey;
+      ${[k, ...v].join(" ")}
+    }`).join("\n")}
+
+    ${[...edges].join("\n")}
+  }`;
+  console.log(graphvizSrc);
   const viz = new Viz(vizRenderOpts);
   const svg = await viz.renderString(graphvizSrc);
   fs.mkdirSync("./dist/blam/tags/", {recursive: true});

@@ -16,14 +16,20 @@ async function findPaths(globPattern) {
   });
 }
 
+// const normalize = (s) => s.toLowerCase().replace(/[^a-z]/g, "");
+
 async function getTagMetadata(tagsDir) {
   const filePaths = await findPaths(path.join(tagsDir, "*.json"));
   const defsByFile = await Promise.all(filePaths.map(async (filePath) => {
     return new Promise(async (resolve, reject) => {
       try {
+        const {name: tagNameSnake} = path.parse(filePath);
         const fileContents = await fs.readFile(filePath, "utf8");
         const defs = JSON.parse(fileContents);
-        resolve(defs);
+        resolve(defs.map(struct => ({
+          ...struct,
+          tagNameSnake //include source name
+        })));
       } catch (err) {
         reject(err);
       }
